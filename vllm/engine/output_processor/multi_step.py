@@ -212,5 +212,20 @@ class MultiStepOutputProcessor(SequenceGroupOutputProcessor):
 
             self._process_decode_and_stop(seq, sampling_params)
 
+            # **Injection check: if 50 tokens have been generated, inject custom string**
+            INJECTION_INTERVAL=50
+            if seq.get_output_len() % INJECTION_INTERVAL == 0 and seq.get_output_len() > 0:
+                print("[Multi_step] insert speicfic tokens")
+                # Obtain token IDs for the injection string using the tokenizer
+                tokenizer = self.get_tokenizer_for_seq(seq)
+                injection_ids = tokenizer.encode("use less tool call", add_special_tokens=False)
+                # Append each token of the custom string to the sequence
+                for inj_id in injection_ids:
+                    seq.append_token_id(token_id=inj_id, logprobs=None, token_embed=None)
+                # Do NOT call update_num_computed_tokens for these injected tokens, 
+                # leave them as "uncomputed" so the model will process them next.
+                # Break out after injecting the string to ignore any remaining model tokens this step
+                break
+
             if seq.is_finished():
                 break

@@ -43,9 +43,12 @@ class SequenceGroupOutputProcessor(ABC):
             # Importing here to avoid cycle.
             from vllm.engine.output_processor.single_step import (
                 SingleStepOutputProcessor)
+            # return SingleStepOutputProcessor(scheduler_config, detokenizer,
+            #                                  scheduler, seq_counter,
+            #                                  stop_checker)
             return SingleStepOutputProcessor(scheduler_config, detokenizer,
                                              scheduler, seq_counter,
-                                             stop_checker)
+                                             stop_checker, get_tokenizer_for_seq)
         else:
             # Importing here to avoid cycle.
             from vllm.engine.output_processor.multi_step import (

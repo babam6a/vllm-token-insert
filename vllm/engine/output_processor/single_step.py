@@ -10,8 +10,9 @@ from vllm.engine.output_processor.interfaces import (
 from vllm.engine.output_processor.stop_checker import StopChecker
 from vllm.logger import init_logger
 from vllm.sequence import (CompletionSequenceGroupOutput, SequenceGroup,
-                           SequenceGroupOutput)
+                           SequenceGroupOutput, Sequence)
 from vllm.transformers_utils.detokenizer import Detokenizer
+from vllm.transformers_utils.tokenizer import AnyTokenizer
 from vllm.utils import Counter
 
 logger = init_logger(__name__)
@@ -75,12 +76,13 @@ class SingleStepOutputProcessor(SequenceGroupOutputProcessor):
 
     def __init__(self, scheduler_config: SchedulerConfig,
                  detokenizer: Detokenizer, scheduler: List[Scheduler],
-                 seq_counter: Counter, stop_checker: StopChecker):
+                 seq_counter: Counter, stop_checker: StopChecker, get_tokenizer_for_seq: Callable[[Sequence], AnyTokenizer]):
         self.scheduler_config = scheduler_config
         self.detokenizer = detokenizer
         self.scheduler = scheduler
         self.seq_counter = seq_counter
         self.stop_checker = stop_checker
+        self.get_tokenizer_for_seq = get_tokenizer_for_seq
 
     def process_outputs(self, sequence_group: SequenceGroup,
                         outputs: List[SequenceGroupOutput],
@@ -129,6 +131,20 @@ class SingleStepOutputProcessor(SequenceGroupOutputProcessor):
         if not is_async:
             seq.append_token_id(sample.output_token, sample.logprobs,
                                 sample.output_embed)
+            # --- Injection Logic: inject "use less tool call" every 50 tokens ---
+            # Cache the tokenized injection phrase (only tokenize once)
+            if not hasattr(self, "_injection_token_ids"):
+                tokenizer = self.get_tokenizer_for_seq(seq)
+                self._injection_token_ids = tokenizer.encode("use less tool call", add_special_tokens=False)
+            injection_interval = 50  # configurable interval
+            # If we've reached the interval and no pending tokens, inject the phrase
+            if seq.data.get_num_uncomputed_tokens() == 0 and seq.get_output_len() % injection_interval == 0:
+                print("[Single_step] insert speicfic tokens")
+                for token_id in self._injection_token_ids:
+                    # Append injection tokens without marking them as computed (so the model will process them next)
+                    seq.append_token_id(token_id, logprobs={}, token_embed=None)
+            # --- End Injection Logic ---
+
         if sampling_params.detokenize and self.detokenizer:
             new_char_count = self.detokenizer.decode_sequence_inplace(
                 seq, sampling_params)
