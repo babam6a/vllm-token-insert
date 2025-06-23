@@ -20,6 +20,9 @@ from vllm.v1.engine.parallel_sampling import ParentRequest
 from vllm.v1.metrics.stats import (IterationStats, LoRARequestStates,
                                    RequestStateStats)
 
+from vllm.logger import init_logger
+
+logger = init_logger(__name__)
 
 class RequestOutputCollector:
     """
@@ -395,8 +398,23 @@ class OutputProcessor:
                 assert req_state.detokenizer is not None
                 assert req_state.logprobs_processor is not None
                 # 2) Detokenize the token ids into text and perform stop checks.
+                output_text_len = len(req_state.detokenizer.output_text)
+
+                ############## Token injection start ##############
+                INJECTION_INTERVAL = 50
+                if output_text_len > 0 and output_text_len % INJECTION_INTERVAL == 0 :
+                    tokenizer = req_state.detokenizer.tokenizer
+                    sequence = tokenizer.encode("use less tool call")
+                    # logger.debug(f"{sequence.ids}, {sequence.type_ids}")
+                    new_token_ids.extend(sequence.ids)
+                
                 stop_string = req_state.detokenizer.update(
                     new_token_ids, finish_reason == FinishReason.STOP)
+                
+                # logger.debug(f"{req_state.detokenizer.output_text}")
+
+                ############## Token injection end ##############
+                
                 if stop_string:
                     finish_reason = FinishReason.STOP
                     stop_reason = stop_string

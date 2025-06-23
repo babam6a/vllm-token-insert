@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
-from typing import List
+from typing import List, Callable
 
 from vllm.config import SchedulerConfig
 from vllm.core.scheduler import Scheduler
@@ -131,19 +131,6 @@ class SingleStepOutputProcessor(SequenceGroupOutputProcessor):
         if not is_async:
             seq.append_token_id(sample.output_token, sample.logprobs,
                                 sample.output_embed)
-            # --- Injection Logic: inject "use less tool call" every 50 tokens ---
-            # Cache the tokenized injection phrase (only tokenize once)
-            if not hasattr(self, "_injection_token_ids"):
-                tokenizer = self.get_tokenizer_for_seq(seq)
-                self._injection_token_ids = tokenizer.encode("use less tool call", add_special_tokens=False)
-            injection_interval = 50  # configurable interval
-            # If we've reached the interval and no pending tokens, inject the phrase
-            if seq.data.get_num_uncomputed_tokens() == 0 and seq.get_output_len() % injection_interval == 0:
-                print("[Single_step] insert speicfic tokens")
-                for token_id in self._injection_token_ids:
-                    # Append injection tokens without marking them as computed (so the model will process them next)
-                    seq.append_token_id(token_id, logprobs={}, token_embed=None)
-            # --- End Injection Logic ---
 
         if sampling_params.detokenize and self.detokenizer:
             new_char_count = self.detokenizer.decode_sequence_inplace(

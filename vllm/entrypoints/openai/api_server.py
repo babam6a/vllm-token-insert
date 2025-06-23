@@ -602,7 +602,10 @@ async def create_completion(request: CompletionRequest, raw_request: Request):
         return JSONResponse(content=generator.model_dump(),
                             status_code=generator.code)
     elif isinstance(generator, CompletionResponse):
-        return JSONResponse(content=generator.model_dump())
+        fixed_content = generator.model_dump()
+        fixed_content['choices'][0]['text'] = fixed_content['choices'][0]['text'].replace('use less tool call', '')
+        # logger.debug(f"[create_completion] {fixed_content}")
+        return JSONResponse(content=fixed_content)
 
     return StreamingResponse(content=generator, media_type="text/event-stream")
 
