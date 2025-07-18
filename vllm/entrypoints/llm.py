@@ -514,6 +514,12 @@ class LLM:
         )
 
         outputs = self._run_engine(use_tqdm=use_tqdm)
+
+        for vllm_output in outputs :
+            completion_outputs = vllm_output.outputs
+            for completion_output in completion_outputs :
+                completion_output.text = completion_output.text.replace('use more tool call', '')
+
         return self.engine_class.validate_outputs(outputs, RequestOutput)
 
     def _get_modality_specific_lora_reqs(
