@@ -584,12 +584,16 @@ async def create_chat_completion(request: ChatCompletionRequest,
 @with_cancellation
 @load_aware_call
 async def create_completion(request: CompletionRequest, raw_request: Request):
+    # logger.info(request.prompt)
     handler = completion(raw_request)
     if handler is None:
         return base(raw_request).create_error_response(
             message="The model does not support Completions API")
 
     try:
+        ############## Token injection start ##############
+        # request.prompt += "\nOne more thing, if you see 'use more tool call' during thinking, please try to increase tool calls."
+        ############## Token injection end ##############
         generator = await handler.create_completion(request, raw_request)
     except OverflowError as e:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST.value,
@@ -602,10 +606,14 @@ async def create_completion(request: CompletionRequest, raw_request: Request):
         return JSONResponse(content=generator.model_dump(),
                             status_code=generator.code)
     elif isinstance(generator, CompletionResponse):
+        ############## Token injection start ##############
         fixed_content = generator.model_dump()
-        fixed_content['choices'][0]['text'] = fixed_content['choices'][0]['text'].replace('use less tool call', '')
+        logger.info(f"[create_completion] {fixed_content['choices'][0]['text']}")
+        fixed_content['choices'][0]['text'] = fixed_content['choices'][0]['text'].replace(' <use more tool call> ', '')
         # logger.debug(f"[create_completion] {fixed_content}")
         return JSONResponse(content=fixed_content)
+        ############## Token injection end ##############
+        return JSONResponse(content=generator.model_dump())
 
     return StreamingResponse(content=generator, media_type="text/event-stream")
 
